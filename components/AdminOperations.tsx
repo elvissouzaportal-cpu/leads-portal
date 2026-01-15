@@ -66,7 +66,7 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        // Forçamos header: 1 para ler como matriz
+        // Lemos como matriz pura (header: 1)
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
         if (data.length === 0) {
@@ -75,10 +75,12 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
           return;
         }
 
-        // Padrão solicitado: Coluna 1 Nome, Coluna 2 Base (pulamos), Coluna 3 Telefone
-        // Índices no array: 0, 1, 2
+        // Padrão solicitado: 
+        // Coluna 1 (index 0) = Nome
+        // Coluna 2 (index 1) = Base (Ignorado)
+        // Coluna 3 (index 2) = Telefone
         
-        // Verifica se a primeira linha é cabeçalho ou dados
+        // Pulamos a primeira linha se for cabeçalho
         let startIndex = 0;
         const firstRow = data[0].map(val => String(val).toLowerCase());
         const isHeader = firstRow.some(h => h.includes('nome') || h.includes('tel') || h.includes('phone') || h.includes('base'));
@@ -91,34 +93,34 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
           return;
         }
 
-        const newLeads: Lead[] = data.slice(startIndex)
-          .filter(row => row.length >= 1 && row[0]) // Garante que a linha tenha ao menos o nome
-          .map((row, index) => {
-            const sellerIndex = index % activeSellers.length;
-            // Padrão fixo: Col 1 (0) = Nome, Col 3 (2) = Telefone
-            // Se a linha for curta (ex: CSV sem col 2), tentamos pegar o último valor como telefone
-            const name = String(row[0] || 'Lead Sem Nome').trim();
-            const phoneRaw = row.length >= 3 ? String(row[2]) : (row.length === 2 ? String(row[1]) : '');
-            const phone = phoneRaw.replace(/\D/g, '');
+        const validLeads = data.slice(startIndex).filter(row => {
+          // Garante que a linha tenha ao menos Nome (col 1) e Telefone (col 3)
+          const name = String(row[0] || '').trim();
+          const phone = String(row[2] || '').replace(/\D/g, '');
+          return name.length > 0 && phone.length >= 8;
+        });
 
-            return {
-              id: `lead-${Date.now()}-${index}`,
-              baseId: selectedBaseId,
-              sellerId: activeSellers[sellerIndex].id,
-              name: name,
-              phone: phone,
-              // Fix: Explicitly cast 'PENDING' to avoid type widening to string
-              status: 'PENDING' as 'PENDING' | 'SENT',
-              createdAt: Date.now()
-            };
-          }).filter(l => l.phone.length >= 8); // Filtro básico de validade de telefone
-
-        if (newLeads.length === 0) {
-          alert("Nenhum lead válido encontrado. Verifique se a planilha segue o padrão: Coluna 1=Nome, Coluna 2=Base, Coluna 3=Telefone.");
-        } else {
-          onImportLeads(newLeads);
-          alert(`${newLeads.length} leads importados e distribuídos com sucesso!`);
+        if (validLeads.length === 0) {
+          alert("Nenhum lead válido encontrado seguindo o padrão:\nColuna 1: Nome\nColuna 2: Base (Ignorado)\nColuna 3: Telefone");
+          setIsImporting(false);
+          return;
         }
+
+        const newLeads: Lead[] = validLeads.map((row, index) => {
+          const sellerIndex = index % activeSellers.length;
+          return {
+            id: `lead-${Date.now()}-${index}`,
+            baseId: selectedBaseId,
+            sellerId: activeSellers[sellerIndex].id,
+            name: String(row[0]).trim(),
+            phone: String(row[2]).replace(/\D/g, ''),
+            status: 'PENDING' as 'PENDING' | 'SENT',
+            createdAt: Date.now()
+          };
+        });
+
+        onImportLeads(newLeads);
+        alert(`${newLeads.length} leads importados e distribuídos com sucesso!`);
       } catch (err) {
         console.error(err);
         alert("Erro ao processar o arquivo. Verifique se o formato é válido.");
@@ -293,59 +295,4 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
             <div className="border-t border-white/5 pt-6">
               <label className="block text-sm font-medium text-slate-400 mb-4">Importação de Leads</label>
               <div className="bg-slate-900/50 border border-white/5 p-4 rounded-2xl mb-6">
-                 <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Padrão Esperado:</p>
-                 <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-center">
-                    <div className="bg-indigo-500/10 p-2 rounded-lg text-indigo-300">Coluna 1<br/>NOME</div>
-                    <div className="bg-white/5 p-2 rounded-lg text-slate-500">Coluna 2<br/>BASE (IGNORADO)</div>
-                    <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-300">Coluna 3<br/>TELEFONE</div>
-                 </div>
-              </div>
-              
-              <input 
-                type="file" 
-                ref={leadsFileInputRef}
-                accept=".xlsx, .xls, .csv, .ods"
-                onChange={handleLeadsFileImport}
-                className="hidden"
-                id="leads-file-import"
-              />
-              
-              <label 
-                htmlFor="leads-file-import"
-                className={`w-full flex items-center justify-center gap-3 py-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer font-bold shadow-lg ${isImporting ? 'bg-slate-800 border-white/10 opacity-50 cursor-wait' : 'bg-emerald-600/10 border-emerald-600/30 hover:bg-emerald-600/20 text-emerald-400 hover:border-emerald-600/50 shadow-emerald-600/10'}`}
-              >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                {isImporting ? 'Processando Arquivo...' : 'Selecionar e Distribuir Planilha'}
-              </label>
-            </div>
-          </div>
-        </section>
-
-        {/* Sellers Management */}
-        <section className="glass p-8 rounded-[2.5rem] border border-white/5 lg:col-span-2">
-          <h3 className="text-xl font-bold text-white mb-6">Controle de Vendedores Ativos</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {state.profiles.filter(p => p.role === UserRole.SELLER).map(seller => (
-              <div key={seller.id} className="bg-white/5 p-5 rounded-2xl border border-white/5 flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-white">{seller.name}</p>
-                  <p className="text-xs text-slate-500">{seller.email}</p>
-                </div>
-                <button 
-                  onClick={() => onToggleSeller(seller.id)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${seller.active ? 'bg-indigo-600' : 'bg-slate-700'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${seller.active ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-};
-
-export default AdminOperations;
+                 <p className="text-

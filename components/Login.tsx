@@ -14,6 +14,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     if (email && pass) onLogin(email, pass);
   };
 
+  const fillTestAccount = (testEmail: string, testPass: string) => {
+    setEmail(testEmail);
+    setPass(testPass);
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-950 p-6 overflow-hidden relative">
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/20 blur-[120px] rounded-full animate-pulse"></div>
@@ -64,10 +69,30 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </form>
 
         <div className="mt-8 p-4 bg-white/5 rounded-2xl border border-white/5">
-          <p className="text-center text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-2">Acesso para Testes</p>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="text-slate-400"><b className="text-white">Admin:</b> admin@disparleads.com<br/><b>Pass:</b> admin</div>
-            <div className="text-slate-400"><b className="text-white">Seller:</b> vendedor@disparleads.com<br/><b>Pass:</b> 123</div>
+          <p className="text-center text-slate-500 text-[10px] uppercase font-bold tracking-widest mb-3">Acesso Rápido (Clique para preencher)</p>
+          <div className="grid grid-cols-1 gap-2">
+            <button 
+              type="button"
+              onClick={() => fillTestAccount('admin@disparleads.com', 'admin')}
+              className="text-left p-3 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/10 group"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] font-bold text-indigo-400 group-hover:text-indigo-300">ADMINISTRADOR</span>
+                <span className="text-[10px] text-slate-600">admin / admin</span>
+              </div>
+              <p className="text-[11px] text-slate-400 truncate">admin@disparleads.com</p>
+            </button>
+            <button 
+              type="button"
+              onClick={() => fillTestAccount('vendedor@disparleads.com', '123')}
+              className="text-left p-3 rounded-xl hover:bg-white/5 transition-colors border border-transparent hover:border-white/10 group"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] font-bold text-emerald-400 group-hover:text-emerald-300">VENDEDOR</span>
+                <span className="text-[10px] text-slate-600">vendedor / 123</span>
+              </div>
+              <p className="text-[11px] text-slate-400 truncate">vendedor@disparleads.com</p>
+            </button>
           </div>
         </div>
       </div>

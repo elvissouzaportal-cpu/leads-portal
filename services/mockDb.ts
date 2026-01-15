@@ -1,9 +1,9 @@
 
 import { AppState, UserRole } from '../types.ts';
 
-const STORAGE_KEY = 'disparleads_v2_data';
+// Alteramos a chave para v3 para invalidar caches antigos sem senhas
+const STORAGE_KEY = 'disparleads_v3_data';
 
-// Estendemos o Profile localmente para incluir password para o mock
 export interface ProfileWithPass {
   id: string;
   name: string;
@@ -32,7 +32,15 @@ const INITIAL_DATA: any = {
 export const getDb = (): AppState => {
   try {
     const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : INITIAL_DATA;
+    if (!data) return INITIAL_DATA;
+    
+    const parsed = JSON.parse(data);
+    
+    // Garantia extra: se os perfis de teste sumiram ou estão sem senha, reinicia
+    const hasAdmin = parsed.profiles?.some((p: any) => p.email === 'admin@disparleads.com' && p.password);
+    if (!hasAdmin) return INITIAL_DATA;
+
+    return parsed;
   } catch (e) {
     console.warn("LocalStorage indisponível, usando dados iniciais.", e);
     return INITIAL_DATA;
