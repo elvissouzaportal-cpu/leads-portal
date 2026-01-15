@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
-import { AppState, LeadBase, Lead, UserRole } from '../types';
-import { generateCopySuggestion } from '../services/gemini';
+import React, { useState, useRef } from 'react';
+import { AppState, LeadBase, Lead, UserRole } from '../types.ts';
+import * as XLSX from 'xlsx';
 
 interface AdminOperationsProps {
   state: AppState;
@@ -13,9 +13,21 @@ interface AdminOperationsProps {
 const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, onImportLeads, onToggleSeller }) => {
   const [baseName, setBaseName] = useState('');
   const [baseCopy, setBaseCopy] = useState('');
+  const [baseImage, setBaseImage] = useState<string | undefined>(undefined);
   const [csvContent, setCsvContent] = useState('');
   const [selectedBaseId, setSelectedBaseId] = useState('');
-  const [isGeneratingCopy, setIsGeneratingCopy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setBaseImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleCreateBase = () => {
     if (!baseName || !baseCopy) return;
@@ -23,22 +35,14 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
       id: `base-${Date.now()}`,
       name: baseName,
       copy: baseCopy,
+      image: baseImage,
       createdAt: Date.now()
     };
     onCreateBase(newBase);
     setBaseName('');
     setBaseCopy('');
-  };
-
-  const handleSuggestCopy = async () => {
-    if (!baseName) {
-      alert("Digite o nome da base para o IA sugerir!");
-      return;
-    }
-    setIsGeneratingCopy(true);
-    const suggestion = await generateCopySuggestion(baseName);
-    setBaseCopy(suggestion);
-    setIsGeneratingCopy(false);
+    setBaseImage(undefined);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleImportCsv = () => {
@@ -75,6 +79,46 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
     alert(`${newLeads.length} leads importados e distribuídos via Round-Robin.`);
   };
 
+  const exportBase = (format: 'xlsx' | 'xls' | 'csv' | 'ods') => {
+    if (!selectedBaseId) {
+      alert("Selecione uma base para exportar.");
+      return;
+    }
+
+    const base = state.bases.find(b => b.id === selectedBaseId);
+    const leadsToExport = state.leads.filter(l => l.baseId === selectedBaseId);
+
+    if (leadsToExport.length === 0) {
+      alert("Esta base não possui leads para exportar.");
+      return;
+    }
+
+    const data = leadsToExport.map(l => ({
+      Nome: l.name,
+      Telefone: l.phone,
+      Status: l.status,
+      Vendedor: state.profiles.find(p => p.id === l.sellerId)?.name || 'N/A',
+      Data_Importacao: new Date(l.createdAt).toLocaleString(),
+      Data_Envio: l.sentAt ? new Date(l.sentAt).toLocaleString() : 'Pendente'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Leads");
+
+    const fileName = `Export_${base?.name || 'Leads'}_${new Date().toISOString().split('T')[0]}`;
+    
+    if (format === 'csv') {
+      XLSX.writeFile(wb, `${fileName}.csv`, { bookType: 'csv' });
+    } else if (format === 'xlsx') {
+      XLSX.writeFile(wb, `${fileName}.xlsx`, { bookType: 'xlsx' });
+    } else if (format === 'xls') {
+      XLSX.writeFile(wb, `${fileName}.xls`, { bookType: 'biff8' });
+    } else if (format === 'ods') {
+      XLSX.writeFile(wb, `${fileName}.ods`, { bookType: 'ods' });
+    }
+  };
+
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div>
@@ -95,25 +139,55 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
               <input 
                 type="text" 
                 className="w-full bg-slate-900/50 border border-white/10 text-white p-4 rounded-2xl focus:ring-2 focus:ring-indigo-600 focus:outline-none transition-all placeholder:text-slate-700"
-                placeholder="Ex: Mentorias High Ticket Jan/2024"
+                placeholder="Ex: Lançamento Jan/2024"
                 value={baseName}
                 onChange={(e) => setBaseName(e.target.value)}
               />
             </div>
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="block text-sm font-medium text-slate-400">Copy do WhatsApp (Use [NOME])</label>
-                <button 
-                  onClick={handleSuggestCopy}
-                  disabled={isGeneratingCopy}
-                  className="text-xs flex items-center gap-1 font-semibold text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-all"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  {isGeneratingCopy ? 'Gerando...' : 'Sugerir com IA'}
-                </button>
+
+            <div className="flex gap-4 items-start">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-slate-400 mb-2">Imagem do Produto/Copy</label>
+                <div className="relative group">
+                   <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                    id="base-image-upload"
+                  />
+                  <label 
+                    htmlFor="base-image-upload"
+                    className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/10 rounded-2xl hover:border-indigo-500/50 hover:bg-indigo-600/5 transition-all cursor-pointer overflow-hidden"
+                  >
+                    {baseImage ? (
+                      <img src={baseImage} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex flex-col items-center text-slate-500">
+                        <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-xs font-medium uppercase">Selecionar Imagem</span>
+                      </div>
+                    )}
+                  </label>
+                  {baseImage && (
+                    <button 
+                      onClick={() => setBaseImage(undefined)}
+                      className="absolute top-2 right-2 bg-red-500/80 p-1.5 rounded-full text-white hover:bg-red-600 transition-colors shadow-lg"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2 px-1">Copy do WhatsApp (Use [NOME])</label>
               <textarea 
                 className="w-full bg-slate-900/50 border border-white/10 text-white p-4 rounded-2xl h-32 focus:ring-2 focus:ring-indigo-600 focus:outline-none transition-all resize-none placeholder:text-slate-700"
                 placeholder="Olá [NOME], vi seu interesse..."
@@ -130,11 +204,11 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
           </div>
         </section>
 
-        {/* Import Leads Section */}
+        {/* Import & Export Section */}
         <section className="glass p-8 rounded-[2.5rem] border border-white/5">
           <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
              <span className="w-8 h-8 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center text-sm font-bold">02</span>
-            Importação & Distribuição
+            Gestão & Exportação
           </h3>
           <div className="space-y-6">
             <div>
@@ -150,6 +224,20 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
                 ))}
               </select>
             </div>
+
+            {/* Export Buttons */}
+            {selectedBaseId && (
+              <div className="p-5 bg-white/5 rounded-2xl border border-white/5">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Baixar Relatório da Base</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button onClick={() => exportBase('xlsx')} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all border border-white/5">.XLSX</button>
+                  <button onClick={() => exportBase('xls')} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all border border-white/5">.XLS</button>
+                  <button onClick={() => exportBase('csv')} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all border border-white/5">.CSV</button>
+                  <button onClick={() => exportBase('ods')} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all border border-white/5">.ODS</button>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-slate-400 mb-2">Colar Leads (CSV: Nome, Telefone)</label>
               <textarea 

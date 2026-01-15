@@ -16,6 +16,7 @@ export interface LeadBase {
   id: string;
   name: string;
   copy: string;
+  image?: string; // Base64 ou URL da imagem
   createdAt: number;
 }
 
