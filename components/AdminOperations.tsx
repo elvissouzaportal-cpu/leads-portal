@@ -14,9 +14,11 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
   const [baseName, setBaseName] = useState('');
   const [baseCopy, setBaseCopy] = useState('');
   const [baseImage, setBaseImage] = useState<string | undefined>(undefined);
-  const [csvContent, setCsvContent] = useState('');
   const [selectedBaseId, setSelectedBaseId] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const leadsFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -45,38 +47,80 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleImportCsv = () => {
-    if (!selectedBaseId || !csvContent) {
-      alert("Selecione uma base e cole o conteúdo CSV.");
+  const handleLeadsFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!selectedBaseId) {
+      alert("Por favor, selecione uma Base primeiro.");
+      if (leadsFileInputRef.current) leadsFileInputRef.current.value = '';
       return;
     }
 
-    const lines = csvContent.split('\n').filter(line => line.trim() !== '');
-    if (lines.length < 1) return;
+    setIsImporting(true);
+    const reader = new FileReader();
 
-    const activeSellers = state.profiles.filter(p => p.role === UserRole.SELLER && p.active);
-    if (activeSellers.length === 0) {
-      alert("Nenhum vendedor ativo encontrado para distribuição.");
-      return;
-    }
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
-    const newLeads: Lead[] = lines.map((line, index) => {
-      const parts = line.split(',');
-      const sellerIndex = index % activeSellers.length;
-      return {
-        id: `lead-${Date.now()}-${index}`,
-        baseId: selectedBaseId,
-        sellerId: activeSellers[sellerIndex].id,
-        name: parts[0]?.trim() || 'Lead Sem Nome',
-        phone: parts[1]?.trim().replace(/\D/g, '') || '',
-        status: 'PENDING',
-        createdAt: Date.now()
-      };
-    });
+        if (data.length < 2) {
+          alert("A planilha parece estar vazia ou sem cabeçalho.");
+          setIsImporting(false);
+          return;
+        }
 
-    onImportLeads(newLeads);
-    setCsvContent('');
-    alert(`${newLeads.length} leads importados e distribuídos via Round-Robin.`);
+        // Tenta identificar colunas de Nome e Telefone
+        const header = data[0].map(h => String(h).toLowerCase());
+        const nameIdx = header.findIndex(h => h.includes('nome') || h.includes('name'));
+        const phoneIdx = header.findIndex(h => h.includes('tel') || h.includes('fone') || h.includes('phone') || h.includes('contato'));
+
+        if (nameIdx === -1 || phoneIdx === -1) {
+          alert("Não conseguimos identificar as colunas 'Nome' e 'Telefone'. Certifique-se de que a primeira linha da planilha contenha esses cabeçalhos.");
+          setIsImporting(false);
+          return;
+        }
+
+        const activeSellers = state.profiles.filter(p => p.role === UserRole.SELLER && p.active);
+        if (activeSellers.length === 0) {
+          alert("Nenhum vendedor ativo encontrado para distribuição.");
+          setIsImporting(false);
+          return;
+        }
+
+        const newLeads: Lead[] = data.slice(1).filter(row => row[nameIdx] && row[phoneIdx]).map((row, index) => {
+          const sellerIndex = index % activeSellers.length;
+          return {
+            id: `lead-${Date.now()}-${index}`,
+            baseId: selectedBaseId,
+            sellerId: activeSellers[sellerIndex].id,
+            name: String(row[nameIdx]).trim(),
+            phone: String(row[phoneIdx]).trim().replace(/\D/g, ''),
+            status: 'PENDING',
+            createdAt: Date.now()
+          };
+        });
+
+        if (newLeads.length === 0) {
+          alert("Nenhum lead válido encontrado após a filtragem.");
+        } else {
+          onImportLeads(newLeads);
+          alert(`${newLeads.length} leads importados e distribuídos com sucesso!`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Erro ao processar o arquivo. Verifique se o formato é válido.");
+      } finally {
+        setIsImporting(false);
+        if (leadsFileInputRef.current) leadsFileInputRef.current.value = '';
+      }
+    };
+
+    reader.readAsBinaryString(file);
   };
 
   const exportBase = (format: 'xlsx' | 'xls' | 'csv' | 'ods') => {
@@ -238,21 +282,29 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-medium text-slate-400 mb-2">Colar Leads (CSV: Nome, Telefone)</label>
-              <textarea 
-                className="w-full bg-slate-900/50 border border-white/10 text-white p-4 rounded-2xl h-32 focus:ring-2 focus:ring-indigo-600 focus:outline-none transition-all resize-none placeholder:text-slate-700 text-xs font-mono"
-                placeholder="João Silva, 5511999999999&#10;Maria Oliveira, 5511888888888"
-                value={csvContent}
-                onChange={(e) => setCsvContent(e.target.value)}
+            <div className="border-t border-white/5 pt-6">
+              <label className="block text-sm font-medium text-slate-400 mb-4">Importação de Leads</label>
+              <p className="text-xs text-slate-500 mb-6">A planilha deve conter os cabeçalhos <b className="text-slate-300">Nome</b> e <b className="text-slate-300">Telefone</b>. Suportamos XLSX, XLS, CSV e ODS.</p>
+              
+              <input 
+                type="file" 
+                ref={leadsFileInputRef}
+                accept=".xlsx, .xls, .csv, .ods"
+                onChange={handleLeadsFileImport}
+                className="hidden"
+                id="leads-file-import"
               />
+              
+              <label 
+                htmlFor="leads-file-import"
+                className={`w-full flex items-center justify-center gap-3 py-6 rounded-2xl border-2 border-dashed transition-all cursor-pointer font-bold shadow-lg ${isImporting ? 'bg-slate-800 border-white/10 opacity-50 cursor-wait' : 'bg-emerald-600/10 border-emerald-600/30 hover:bg-emerald-600/20 text-emerald-400 hover:border-emerald-600/50 shadow-emerald-600/10'}`}
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                {isImporting ? 'Processando Arquivo...' : 'Selecionar e Distribuir Planilha'}
+              </label>
             </div>
-            <button 
-              onClick={handleImportCsv}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-emerald-600/20"
-            >
-              Distribuir Leads (Round-Robin)
-            </button>
           </div>
         </section>
 
