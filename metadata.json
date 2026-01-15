@@ -1,0 +1,7 @@
+{
+  "name": "DisparLeads Portal v2.0",
+  "description": "A high-performance lead distribution and management portal with role-based access for Admins and Sellers, featuring automated WhatsApp dispatch and AI-powered copy generation.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
