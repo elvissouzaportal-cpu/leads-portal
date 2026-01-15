@@ -1,5 +1,5 @@
 
-import { AppState, Profile, UserRole, LeadBase, Lead } from '../types';
+import { AppState, Profile, UserRole } from '../types.ts';
 
 const STORAGE_KEY = 'disparleads_v2_data';
 
@@ -20,15 +20,28 @@ const INITIAL_DATA: AppState = {
 };
 
 export const getDb = (): AppState => {
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : INITIAL_DATA;
+  try {
+    const data = localStorage.getItem(STORAGE_KEY);
+    return data ? JSON.parse(data) : INITIAL_DATA;
+  } catch (e) {
+    console.warn("LocalStorage indisponível, usando dados iniciais.", e);
+    return INITIAL_DATA;
+  }
 };
 
 export const saveDb = (state: AppState) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error("Erro ao salvar no LocalStorage", e);
+  }
 };
 
 export const resetDb = () => {
-  localStorage.removeItem(STORAGE_KEY);
-  window.location.reload();
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    window.location.reload();
+  } catch (e) {
+    window.location.reload();
+  }
 };

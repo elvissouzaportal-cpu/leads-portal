@@ -1,15 +1,15 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { AppState, UserRole, Profile, LeadBase, Lead } from './types';
-import { getDb, saveDb } from './services/mockDb';
-import Login from './components/Login';
-import Layout from './components/Layout';
-import AdminDashboard from './components/AdminDashboard';
-import AdminOperations from './components/AdminOperations';
-import SellerQueue from './components/SellerQueue';
+import React, { useState, useEffect } from 'react';
+import { AppState, UserRole, Profile, LeadBase, Lead } from './types.ts';
+import { getDb, saveDb } from './services/mockDb.ts';
+import Login from './components/Login.tsx';
+import Layout from './components/Layout.tsx';
+import AdminDashboard from './components/AdminDashboard.tsx';
+import AdminOperations from './components/AdminOperations.tsx';
+import SellerQueue from './components/SellerQueue.tsx';
 
 const App: React.FC = () => {
-  const [state, setState] = useState<AppState>(getDb());
+  const [state, setState] = useState<AppState>(() => getDb());
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'operations' | 'queue'>('dashboard');
 
   useEffect(() => {
@@ -22,7 +22,6 @@ const App: React.FC = () => {
       setState(prev => ({ ...prev, user: profile }));
       setCurrentTab(profile.role === UserRole.ADMIN ? 'dashboard' : 'queue');
     } else {
-      // Auto-register as seller if not found (simulating open registration)
       const newSeller: Profile = {
         id: Math.random().toString(36).substr(2, 9),
         name: email.split('@')[0],
