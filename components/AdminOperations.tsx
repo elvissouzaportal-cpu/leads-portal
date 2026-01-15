@@ -66,24 +66,23 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
+        // Forçamos header: 1 para ler como matriz
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
-        if (data.length < 2) {
-          alert("A planilha parece estar vazia ou sem cabeçalho.");
+        if (data.length === 0) {
+          alert("A planilha parece estar vazia.");
           setIsImporting(false);
           return;
         }
 
-        // Tenta identificar colunas de Nome e Telefone
-        const header = data[0].map(h => String(h).toLowerCase());
-        const nameIdx = header.findIndex(h => h.includes('nome') || h.includes('name'));
-        const phoneIdx = header.findIndex(h => h.includes('tel') || h.includes('fone') || h.includes('phone') || h.includes('contato'));
-
-        if (nameIdx === -1 || phoneIdx === -1) {
-          alert("Não conseguimos identificar as colunas 'Nome' e 'Telefone'. Certifique-se de que a primeira linha da planilha contenha esses cabeçalhos.");
-          setIsImporting(false);
-          return;
-        }
+        // Padrão solicitado: Coluna 1 Nome, Coluna 2 Base (pulamos), Coluna 3 Telefone
+        // Índices no array: 0, 1, 2
+        
+        // Verifica se a primeira linha é cabeçalho ou dados
+        let startIndex = 0;
+        const firstRow = data[0].map(val => String(val).toLowerCase());
+        const isHeader = firstRow.some(h => h.includes('nome') || h.includes('tel') || h.includes('phone') || h.includes('base'));
+        if (isHeader) startIndex = 1;
 
         const activeSellers = state.profiles.filter(p => p.role === UserRole.SELLER && p.active);
         if (activeSellers.length === 0) {
@@ -92,21 +91,30 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
           return;
         }
 
-        const newLeads: Lead[] = data.slice(1).filter(row => row[nameIdx] && row[phoneIdx]).map((row, index) => {
-          const sellerIndex = index % activeSellers.length;
-          return {
-            id: `lead-${Date.now()}-${index}`,
-            baseId: selectedBaseId,
-            sellerId: activeSellers[sellerIndex].id,
-            name: String(row[nameIdx]).trim(),
-            phone: String(row[phoneIdx]).trim().replace(/\D/g, ''),
-            status: 'PENDING',
-            createdAt: Date.now()
-          };
-        });
+        const newLeads: Lead[] = data.slice(startIndex)
+          .filter(row => row.length >= 1 && row[0]) // Garante que a linha tenha ao menos o nome
+          .map((row, index) => {
+            const sellerIndex = index % activeSellers.length;
+            // Padrão fixo: Col 1 (0) = Nome, Col 3 (2) = Telefone
+            // Se a linha for curta (ex: CSV sem col 2), tentamos pegar o último valor como telefone
+            const name = String(row[0] || 'Lead Sem Nome').trim();
+            const phoneRaw = row.length >= 3 ? String(row[2]) : (row.length === 2 ? String(row[1]) : '');
+            const phone = phoneRaw.replace(/\D/g, '');
+
+            return {
+              id: `lead-${Date.now()}-${index}`,
+              baseId: selectedBaseId,
+              sellerId: activeSellers[sellerIndex].id,
+              name: name,
+              phone: phone,
+              // Fix: Explicitly cast 'PENDING' to avoid type widening to string
+              status: 'PENDING' as 'PENDING' | 'SENT',
+              createdAt: Date.now()
+            };
+          }).filter(l => l.phone.length >= 8); // Filtro básico de validade de telefone
 
         if (newLeads.length === 0) {
-          alert("Nenhum lead válido encontrado após a filtragem.");
+          alert("Nenhum lead válido encontrado. Verifique se a planilha segue o padrão: Coluna 1=Nome, Coluna 2=Base, Coluna 3=Telefone.");
         } else {
           onImportLeads(newLeads);
           alert(`${newLeads.length} leads importados e distribuídos com sucesso!`);
@@ -210,7 +218,7 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
                     ) : (
                       <div className="flex flex-col items-center text-slate-500">
                         <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                         <span className="text-xs font-medium uppercase">Selecionar Imagem</span>
                       </div>
@@ -284,7 +292,14 @@ const AdminOperations: React.FC<AdminOperationsProps> = ({ state, onCreateBase, 
 
             <div className="border-t border-white/5 pt-6">
               <label className="block text-sm font-medium text-slate-400 mb-4">Importação de Leads</label>
-              <p className="text-xs text-slate-500 mb-6">A planilha deve conter os cabeçalhos <b className="text-slate-300">Nome</b> e <b className="text-slate-300">Telefone</b>. Suportamos XLSX, XLS, CSV e ODS.</p>
+              <div className="bg-slate-900/50 border border-white/5 p-4 rounded-2xl mb-6">
+                 <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">Padrão Esperado:</p>
+                 <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-center">
+                    <div className="bg-indigo-500/10 p-2 rounded-lg text-indigo-300">Coluna 1<br/>NOME</div>
+                    <div className="bg-white/5 p-2 rounded-lg text-slate-500">Coluna 2<br/>BASE (IGNORADO)</div>
+                    <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-300">Coluna 3<br/>TELEFONE</div>
+                 </div>
+              </div>
               
               <input 
                 type="file" 

@@ -1,14 +1,24 @@
 
-import { AppState, Profile, UserRole } from '../types.ts';
+import { AppState, UserRole } from '../types.ts';
 
 const STORAGE_KEY = 'disparleads_v2_data';
 
-const INITIAL_DATA: AppState = {
+// Estendemos o Profile localmente para incluir password para o mock
+export interface ProfileWithPass {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  active: boolean;
+  password?: string;
+}
+
+const INITIAL_DATA: any = {
   user: null,
   profiles: [
-    { id: '1', name: 'Admin Master', email: 'admin@disparleads.com', role: UserRole.ADMIN, active: true },
-    { id: '2', name: 'João Vendedor', email: 'joao@disparleads.com', role: UserRole.SELLER, active: true },
-    { id: '3', name: 'Maria Seller', email: 'maria@disparleads.com', role: UserRole.SELLER, active: true },
+    { id: '1', name: 'Admin Master', email: 'admin@disparleads.com', password: 'admin', role: UserRole.ADMIN, active: true },
+    { id: '2', name: 'Vendedor Teste', email: 'vendedor@disparleads.com', password: '123', role: UserRole.SELLER, active: true },
+    { id: '3', name: 'Maria Seller', email: 'maria@disparleads.com', password: '123', role: UserRole.SELLER, active: true },
   ],
   bases: [
     { id: 'base-1', name: 'Lançamento Mentorias', copy: 'Olá [NOME], vi seu interesse no curso!', createdAt: Date.now() }

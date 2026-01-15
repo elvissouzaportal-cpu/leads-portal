@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppState, UserRole, Profile, LeadBase, Lead } from './types.ts';
+import { AppState, UserRole, LeadBase, Lead } from './types.ts';
 import { getDb, saveDb } from './services/mockDb.ts';
 import Login from './components/Login.tsx';
 import Layout from './components/Layout.tsx';
@@ -16,25 +16,13 @@ const App: React.FC = () => {
     saveDb(state);
   }, [state]);
 
-  const handleLogin = (email: string) => {
-    const profile = state.profiles.find(p => p.email === email);
+  const handleLogin = (email: string, pass: string) => {
+    const profile = (state.profiles as any[]).find(p => p.email === email && p.password === pass);
     if (profile) {
       setState(prev => ({ ...prev, user: profile }));
       setCurrentTab(profile.role === UserRole.ADMIN ? 'dashboard' : 'queue');
     } else {
-      const newSeller: Profile = {
-        id: Math.random().toString(36).substr(2, 9),
-        name: email.split('@')[0],
-        email: email,
-        role: UserRole.SELLER,
-        active: true
-      };
-      setState(prev => ({
-        ...prev,
-        user: newSeller,
-        profiles: [...prev.profiles, newSeller]
-      }));
-      setCurrentTab('queue');
+      alert("Credenciais inválidas. Verifique o e-mail e a senha.");
     }
   };
 
